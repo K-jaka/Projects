@@ -1,0 +1,322 @@
+---
+title: "R Project 1"
+output: html_document
+---
+
+**GitHub copy**
+
+**Research question:** How do different shopping patterns in other food categories (fruit, meat, fish, and sweets) affect the amount spent on wine?
+
+**Explanation:** I have chosen the Principal Component Analysis (PCA) method because I want to explore which factors most influence the amount customers spend on wine. PCA enables me to identify key patterns and relationships among various variables in the selected dataset. My goal is to better understand which factors are most responsible for the variability in wine spending and how these variables are interconnected.
+The variables included in the analysis are more precisely represented within the analysis itself: Income, MntWines, MntFruits, MntMeatProducts, MntFishProducts, and MntSweetProducts.
+
+**Data_source:** Kaggle.com. (2023). Title: Customer Personality Analysis. 
+Obtained from: https://www.kaggle.com/datasets/imakash3011/customer-personality-analysis
+
+**Data:** They are connected to individuals (customers) and their shopping habits in the store. The data enables the company to gain a more detailed understanding of its customers and key segments.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Import the data and display first six (6) rows**
+```{r}
+podatki <- read.table("/Users/jakakranjc/Downloads/marketing_campaign.csv", header=TRUE, sep = "\t", dec = ".")
+head(podatki)
+```
+
+**For easier understanding of data**
+```{r}
+summary(podatki)
+```
+
+**Explanation of data:**
+Observation unit - Each row in the dataset represents information about a specific customer.
+
+Sample size - The sample size is the number of customers included in the dataset. In our case, it is **2240**.
+
+Variables - The relevant/presented variables related to the chosen question are:
+
+  ID: A unique identifier for the customer.
+  Year_Birth: The birth year of the customer.
+  Income: The customer's annual household income.
+  MntWines: Amount spent on wine in the last 2 years.
+  MntFruits: Amount spent on fruit in the last 2 years.
+  MntMeatProducts: Amount spent on meat in the last 2 years.
+  MntFishProducts: Amount spent on fish in the last 2 years.
+  MntSweetProducts: Amount spent on sweets in the last 2 years.
+
+Measurement units - These are evident from the dataset (e.g., unit quantities, income     in the appropriate currency, etc.).
+
+**Organizing the data**
+```{r}
+podatki_vino <- podatki[,-c(2,3,4,6,7,8,9,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29)]
+colnames(podatki_vino) <- c("ID", "Prihodek", "Znesek_vino", "Znesek_sadje", "Znesek_meso", "Znesek_ribe", "Znesek_sladko")
+head(podatki_vino)
+```
+Created a new table on which we can now 'play'. 
+
+**Descriptive statistics**
+```{r}
+library(psych)
+describe(podatki_vino[, -1])
+```
+
+```{r}
+library(car)
+```
+
+**OLS regression method - linear regression**
+```{r}
+fit <- lm(Znesek_vino ~ Prihodek + Znesek_sadje + Znesek_meso + Znesek_ribe + Znesek_sladko,
+          data = podatki_vino)
+vif(fit)
+```
+We can see that all variables have higher values; we want them as close to 1 as possible. (Up to around 1.5 is acceptable.)
+Using VIF, we check for multicollinearity. Collinearity is present, if it is not checked it can result in incorrect regression coefficients.
+
+```{r}
+mean(vif(fit))
+```
+We want the mean of the VIF so be as close to 1 as possible as well.
+
+**New subset, then descriptive statistics**
+```{r}
+podatki_MGK <- podatki_vino[,c("Prihodek", "Znesek_sadje", "Znesek_meso", "Znesek_ribe", "Znesek_sladko")]
+library(pastecs)
+round(stat.desc(podatki_MGK, basic = FALSE), 2)
+```
+Znesek_sladko ('Amount_sweet') has the highest coef.var, thats why it varies most. The data must first be standarized, since prihodek ('income') has a very high var value and hence high affect. 
+
+**Correlation matrix**
+```{r}
+R <- cor(podatki_MGK)
+round(R, 3)
+```
+5x5 matrix, diagonally value 1, the rest of them are Pearson coefficients. 
+Coefficient Znesek_meso/Znesek_sladko (Amount_meat/Amount_sweet) -> linear connection is positive and has 'medium strenght'.
+Prihodek ('Income') has values NA, thats why we are 'not allowed' to count it in. 
+
+**Quick fix without Prihodek ('Income')**
+```{r}
+podatki_MGK_nova <- podatki_vino[,c("Znesek_sadje", "Znesek_meso", "Znesek_ribe", "Znesek_sladko")]
+library(pastecs)
+round(stat.desc(podatki_MGK_nova, basic = FALSE), 2)
+```
+```{r}
+R <- cor(podatki_MGK_nova)
+round(R, 3)
+```
+
+**The Bartlett test**
+```{r}
+cortest.bartlett(R, n = nrow(podatki_MGK_nova))
+```
+H0 - P = I 
+H1 - P =/= I
+We can reject the null hypothesis, p = 0, the data is valid/appropriate
+
+**KMO statistics**
+```{r}
+KMO(R)
+```
+KMO = 0.82, value is good.
+MSA = Znesek_meso ('Amount_meat') is most appropriate, znesek_ribe ('Amount_fish') is least appropriate, values still high enough. Biggest information loss would happen with znesek_ribe ('Amount_fish'). 
+The data is valid.
+
+**PCA - Principal Component Analysis**
+```{r}
+library(FactoMineR)
+mgk <- PCA(podatki_MGK_nova,
+           scale.unit = TRUE,
+           graph = FALSE)
+
+library(factoextra)
+get_eigenvalue(mgk)
+```
+We standardize with scale-unit, and the analysis will now be based on the correlation matrix. Using eigenvalues, we determine own values. 
+The maximum component values are displayed (in this case, 4), with each subsequent one having a lower eigenvalue. LV = variance of the component (e.g., dimension 2 = 0.48). 
+
+The variance.percent tells us what percentage of information is captured by each component. The variance of the first 4 variables will thus be 4. (Out of these 4, the first principal component will capture 2.689 = 67.2%). The last column is cumulative, and it will always total 100. 
+According to the Kaiser criterion, we take only the first component (values above 1). If we look at the values alone, we would take the first two components since we need 70%. Since we also have the rule of the last 5%, we could also take the third and fourth components.
+
+**Eigenvalue plot for determining the number of analytically significant principal components**
+```{r}
+fviz_eig(mgk,
+         choice = "eigenvalue", 
+         main = "Diagram lastnih vrednosti",
+         ylab = "lastna vrednost", 
+         xlab = "glavna komponenta", 
+         addlabels = TRUE)
+```
+We are looking for where the diagram breaks, that happens at 2. We take one less, so just the first one.
+**I was supposed to take only the first component, bcs it already broke at 2, but had some issues with drawing fviz_pca_var and biplot, thays why I still took 2 for visualization. **
+
+**Paralel analysis**
+```{r}
+library(psych)
+fa.parallel(podatki_MGK_nova,
+            sim = FALSE,
+            fa = "pc")
+```
+
+We mnust assign the main component. Until the empirical value is above the theoretical, we take the main component. 
+This confirms, that we take just the first one. 
+**fa.parallel also tells us, da we would need to take just one, but the graphs were giving me a hard time and for ease of visualisation, I took two**
+
+**Solution with (just one) main component**
+```{r}
+mgk <- PCA(podatki_MGK_nova,
+           scale.unit = TRUE,
+           graph = FALSE, 
+           ncp = 2)
+
+mgk
+```
+We say how many main components we want, then select 4,6 and 8. 
+ncp = 2 takes 2 main components, ncp = 1 just one.
+
+**var$cor**
+```{r}
+print(mgk$var$cor)
+print(mgk$var$contrib)
+```
+with cor we get rescaled coefficients or weights of main components (Pearson correlation coefficients between individual initial variables and each principal component). All 4 variables for dim1 have a positive sign (positive correlation). The more a person spends on fruit, meat, fish, and sweets, the higher the amount spent on wine in PC1. PC2 usually represents certain contrasts, as it often includes both positive and negative coefficients.
+
+LS = we take the coefficient of each principal/main component, square it and sum it with the rest.
+for example fruit: 0.82' + (-0.15)' = 0,69 = 69% information has been transfered, 31% of it has been lost.
+
+**in case of just one main comp.** - 
+**v primeru le ene gk:** -> All 4 variables have a negative correlation with the first principal component, meaning that the higher the amount spent on fruit, meat, fish, and sweets, the lower the amount spent on wine.
+
+The contrib value indicates what percentage of the total information of the principal component was contributed by each measured variable. In our case, Znesek_ribe contributed the most to PC1.
+
+**Grafical visualisation of the measured component**
+```{r}
+fviz_pca_var(mgk,
+             repel = TRUE)
+```
+
+**In the case of a single axis** -> Since we have only one principal component, the request 'axes = c(1,1)' had issues displaying a graph with two axes. 
+(Apologies for the reduced clarity; I hope (1,1) is an acceptable approach, as Stack Overflow wasn't particularly helpful.)
+
+Dim1 - 67.2 indicates that 67.2% of the information was transferred to this component. Dim2 shows that 12% of the information was transferred. Each axis represents its principal component with its corresponding values (e.g., meat -> 0.6, 0.6; fruit -> 0.7, -0.2).
+
+**Biplot visualisation**
+```{r}
+fviz_pca_biplot(mgk)
+```
+
+Since the entire sample is huge, the graph is unclear. Using the option REPEL = TRUE could potentially improve the graph, but it remains unreadable.
+
+The "best" unit can still be identified—this is unit number 361, which is more than 6 standard deviations to the right.
+
+**Check for standalone values**
+```{r}
+head(mgk$ind$coord)
+```
+If we were interested in an individual person, we could determine their coordinates and use the scale function to standardize the values.
+
+**Save the data in the main table**
+```{r}
+podatki_vino$GK1 <- mgk$ind$coord[,1]
+podatki_vino$GK2 <- mgk$ind$coord[,2]
+head(podatki_vino,3)
+```
+
+**Check for coorelation**
+```{r}
+cor(x=podatki_vino$GK1, y=podatki_vino$GK2)
+```
+
+If they are independent, the correlation should be 0. This value is practically 0, meaning there is virtually no connection between them.
+
+**The principal component analysis was conducted on 4 standardized variables (n=2240).**
+**The KMO test confirms the adequacy of the variables with KMO = 0.82. The MSA statistic for each variable is at least 0.5. Based on parallel analysis and other criteria, it is most reasonable to retain only one principal component. However, for easier visualization in the graphs, I selected two components (together, they account for 79.2% of the variance). A rationale for using only one variable is also provided where applicable.**
+
+Based on the loadings, we find that PC1 represents the amount spent on wine, while PC2 highlights the contrast between the amount spent on meat products and non-meat products.
+
+**LM**
+```{r}
+fit <- lm(Znesek_vino ~ Prihodek + GK1 + GK2,
+          data = podatki_vino)
+vif(fit)
+```
+```{r}
+mean(vif(fit))
+```
+Values are now better than before. 
+
+**Missing values**
+```{r}
+NA_vrednosti <- complete.cases(podatki_vino)
+sum(NA_vrednosti)
+podatki_vino[!NA_vrednosti, ]
+```
+Income has missing values, which hinders the calculation of standard deviation and standardized values.
+
+**Fill in NA values with Mean**
+```{r}
+Mean_prihodki <- mean(podatki_vino$Prihodek, na.rm = TRUE)
+podatki_vino$Prihodek[is.na(podatki_vino$Prihodek)] <- Mean_prihodki
+sum(is.na(podatki_vino$Prihodek))
+```
+We calculate the mean of the income and then replace or insert it into all values where we have NA.  
+To verify if it worked, we sum up all NA values in the Income column using **sum.na**. If the result is 0, then it's fine.
+
+**LM again**
+```{r}
+fit <- lm(Znesek_vino ~ Prihodek + GK1 + GK2,
+          data = podatki_vino)
+vif(fit)
+```
+
+**Histogram and graph of stdost/stdOcenVred**
+```{r}
+podatki_vino$stdost <- rstandard(fit)
+podatki_vino$stdocenvred <- scale(fit$fitted.values)
+
+hist(podatki_vino$stdost,
+     xlab = "Standardni ostanki",
+     ylab = "Frekvenca",
+     main = "Histogram")
+```
+```{r}
+ggplot(podatki_vino, aes(y=stdost, x=stdocenvred)) + theme_dark() + geom_point(color = "snow") + ylab("stand ostanki") + xlab("stand ocen vred")
+```
+
+```{r}
+library(olsrr)
+```
+
+**Check the BP test**
+```{r}
+ols_test_breusch_pagan(fit)
+```
+H0 lahko zavrnemo, p vrednost = 0. (prob > Chi2), imamo heteroskedastičnost. 
+WE can throw away H0, p value = 0. (prob > Chi2), so we have Heteroskedasticity.
+
+**Cooks distances**
+```{r}
+podatki_vino$cooksD <- cooks.distance(fit)
+head(podatki_vino[order(-podatki_vino$cooksD), ], )
+```
+```{r}
+podatki_vino <- podatki_vino[c(-2234,-1654,-688,-165,-2229,-22), ]
+```
+We remove all units that have a stdost outside the range (-3, +3), as well as those with cooksD outside of a certain 'normal' range, meaning when it is not in a smooth decline.
+```{r}
+head(podatki_vino[order(-podatki_vino$cooksD), ], )
+```
+
+**Results**
+```{r}
+summary(fit)
+```
+**Multiple R-squared** - 41.25% of the variability in the result is explained by the linear influence of PC1, PC2, and income.  
+
+**F-statistics** - We check for linear correlation to see if the model explains the variability. A very low p-value suggests rejecting the null hypothesis at p < 0.001.  
+
+All 4 variables have a statistically significant impact.  
+
+Both **PC1** and **PC2** have a positive sign. The more spent on other products, the more will be spent on wine. Similarly, the more spent on wine, the more will be spent on meat, assuming other factors remain unchanged.
