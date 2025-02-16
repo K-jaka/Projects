@@ -1,0 +1,163 @@
+---
+title: "R Project 2"
+output: html_notebook
+---
+
+**GitHub copy**
+
+**Research Question**: Is there a noticeable difference in the amount spent on wines between customers who accepted the offer in the latest marketing campaign and those who did not?
+
+**Source**: Kaggle.com. (2022). *Classification: Customer Personality Analysis*. 
+Retrieved on January 7, 2024, from https://www.kaggle.com/datasets/imakash3011/customer-personality-analysis
+
+**Import the data (CSV file):**
+```{r}
+cust_pers <- read.table("/Users/jakakranjc/Downloads/marketing_campaign.csv", header=TRUE, sep = "\t", dec = ".")
+```
+
+The first 6 rows: 
+```{r}
+head(cust_pers)
+```
+
+Remove unnecessary columns, rename the rest
+```{r}
+cust_personal <- cust_pers[,-c(2,3,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28)]
+colnames(cust_personal) <- c("ID", "Znesek_vino", "Odgovor")
+head(cust_personal)
+```
+**Explanation of Variables:**
+
+- **ID**: Unique identifier for each customer.  
+- **Znesek_vino**: Amount (in EUR) spent by the customer on wine over the past two years.  
+- **Odgovor**:  
+  - **1** = The customer accepted the offer in the latest marketing campaign.  
+  - **2** = The customer did not accept the offer.  
+
+```{r}
+ID_posameznika <- cust_personal$`ID`
+Povprecen_znesek_zapravljen_na_vinu_zadnje_dve_leti <- cust_personal$`Znesek_vino`
+Sodelovanje_v_kampanji <- cust_personal$`Odgovor`
+```
+
+**Descriptive Statistics:**
+```{r}
+summary(cust_personal)
+```
+**Some Explanations:**  
+- The minimum value for **ID** is 0, and the maximum is 11191.  
+- The mean (average) amount spent on wine (**Znesek_vino**) is **303.94 EUR**, and the median is **173.5 EUR**.  
+- The mean is higher than the median → this indicates **positive skewness**.  
+- The average value for **Odgovor = 1** is **0.1491**, meaning **14.91%** of responses are equal to 1.
+
+**Perform a Welch t-test:**  
+```{r}
+group_1 <- cust_personal$Znesek_vino[cust_personal$Odgovor == 1]
+group_2 <- cust_personal$Znesek_vino[cust_personal$Odgovor == 0]
+
+t_test_rezultat <- t.test(group_1, group_2)
+print(t_test_rezultat)
+```
+A Welch t-test was performed to compare the mean amounts spent on wine between those who participated in the last campaign and those who did not. The p-value was less than 0.05, which means we can reject the null hypothesis. There is a statistically significant difference between the average amounts spent on wine by customers who accepted the campaign and those who did not. Additionally, a 95% confidence interval further supports the 'advantage' or positive difference in the group that accepted the campaign.
+
+**Next, perform a non-parametric test - Wilcoxon rank-sum test:**  
+```{r}
+group_1_wr <- cust_personal$Znesek_vino[cust_personal$Odgovor == 1]
+group_2_wr <- cust_personal$Znesek_vino[cust_personal$Odgovor == 0]
+
+wilcox_rank_vsota <- wilcox.test(group_1_wr, group_2_wr)
+print(wilcox_rank_vsota)
+```
+The Wilcoxon rank-sum test was conducted to compare the distribution of average amounts spent on wine between the two groups (those who accepted the last campaign = 1, and those who did not = 0). The result provides evidence against the null hypothesis, indicating that there is a significant difference in the distribution of amounts. The p-value is less than 2.2e-16, strongly supporting the rejection of the null hypothesis. This confirms that the difference in distribution is not equal to 0, aligning with the previous t-test results.
+
+**Check for normal distribution using the Shapiro-Wilk test:**  
+```{r}
+shapiro.test(cust_personal$Znesek_vino[cust_personal$Odgovor == 1])
+```
+```{r}
+shapiro.test(cust_personal$Znesek_vino[cust_personal$Odgovor == 0])
+```
+The Shapiro-Wilk test shows that the assumption of normality is violated for the average amount spent by individuals on wine over the past two years, based on the group they belong to.
+
+**Both tests support the rejection of the null hypothesis. However, due to the violation of the normality assumption, we rely on the non-parametric Wilcoxon rank-sum test.**
+
+---
+
+**PART 2**  
+I decided to use multiple linear regression, with the data source remaining the same.
+
+**Research Question:** How does the amount spent on wine relate to income and the number of children at home?  
+```{r}
+summary(cust_pers)
+```
+```{r}
+cust_pers2 <- cust_pers[,-c(1,2,3,4,7,8,9,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29)]
+colnames(cust_pers2) <- c("Prihodek", "Otroci_doma", "Znesek_vino")
+summary(cust_pers2)
+```
+**are there NA values or how many of them are empty in Prihodek**
+```{r}
+sum(is.na(cust_pers2))
+```
+
+**All NAs in Prihodek get assigned median**
+```{r}
+cust_pers2$Prihodek[is.na(cust_pers2$Prihodek)] <- median(cust_pers2$Prihodek, na.rm = TRUE)
+```
+If a value in the "income" column is missing, the median income is filled in the cell to facilitate analysis.
+
+**Create a model for multiple linear regression:**  
+```{r}
+fit <- lm(Znesek_vino ~ Prihodek + Otroci_doma, data = cust_pers2)
+
+summary(fit)
+```
+The p-value is extremely small (2.2e-16), indicating that both income and the number of children at home are statistically significant predictors of the amount spent on wine. The model is statistically significant.
+
+```{r}
+library(car)
+```
+
+**Get VIF**
+```{r}
+vif(fit)
+```
+Values are under 5 and acceptable. 
+
+**Check for coorelation**
+```{r}
+cor_matrix <- cor(cust_pers2)
+print(cor_matrix)
+```
+The correlation between the amount spent on wine and income is 0.57, which means it is moderately positive, indicating that as income increases, the amount spent on wine also increases. The correlation between the amount spent and the number of children at home is -0.49, meaning it is negative, and as the number of children at home increases, the amount spent on wine decreases.
+
+```{r}
+library(corrplot)
+```
+
+```{r}
+corrplot(cor_matrix, method = "color")
+```
+Perform the Breusch-Pagan test for the assumption of homoscedasticity. 
+
+```{r}
+library(olsrr)
+```
+
+```{r}
+ols_test_breusch_pagan(fit)
+```
+**Null hypothesis (H₀):** Variance is constant (homoscedasticity).  
+**Alternative hypothesis (H₁):** Variance is not constant (heteroscedasticity).  
+The p-value is very small and less than 0.0000, so we can reject H₀. The variability of errors is not constant, indicating the presence of heteroscedasticity.
+
+Next, check the model fit using R² and adjusted R².
+
+```{r}
+summary(fit)$r.squared
+```
+
+```{r}
+summary(fit)$adj.r.squared
+```
+
